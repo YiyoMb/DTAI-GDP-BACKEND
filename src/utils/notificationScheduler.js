@@ -1,12 +1,13 @@
 // File: backend/src/utils/notificationScheduler.js
 const cron = require('node-cron');
 const { runScheduledNotifications } = require('../services/notificationService');
+const { sendMeetingReminders } = require('../services/meetingService'); //Importación para agenda de reuniones
 
 /**
  * Configurador de tareas programadas para notificaciones automáticas
  *
  * Este módulo configura trabajos cron que se ejecutan automáticamente
- * para enviar notificaciones de tareas vencidas y otros eventos programados
+ * para enviar notificaciones de tareas vencidas y recordatorios de reuniones
  */
 
 /**
@@ -45,6 +46,23 @@ const startNotificationScheduler = () => {
         timezone: "America/Mexico_City"
     });
 
+    // ===== RECORDATORIOS DE REUNIONES =====
+    // Se ejecuta cada 15 minutos para recordatorios de reuniones próximas
+    cron.schedule('*/15 * * * *', async () => {
+        console.log('📅 Verificando recordatorios de reuniones...');
+        try {
+            const results = await sendMeetingReminders();
+            if (results.sent > 0) {
+                console.log('✅ Recordatorios de reuniones enviados:', results);
+            }
+        } catch (error) {
+            console.error('❌ Error en recordatorios de reuniones:', error);
+        }
+    }, {
+        scheduled: true,
+        timezone: "America/Mexico_City"
+    });
+
     // ===== LIMPIEZA SEMANAL DE NOTIFICACIONES ANTIGUAS =====
     // Se ejecuta todos los domingos a las 2:00 AM
     cron.schedule('0 2 * * 0', () => {
@@ -72,6 +90,7 @@ const startNotificationScheduler = () => {
     console.log('📅 Horarios configurados:');
     console.log('   - 8:00 AM: Notificaciones de tareas que vencen hoy');
     console.log('   - 9:00 AM: Notificaciones de tareas vencidas');
+    console.log('   - Cada 15 min: Recordatorios de reuniones próximas'); // ✅ NUEVO
     console.log('   - 2:00 AM (Domingos): Limpieza de notificaciones antiguas');
     console.log('   - 10:00 AM (Lunes): Reporte semanal');
 };
