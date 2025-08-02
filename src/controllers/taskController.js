@@ -9,6 +9,8 @@ const {
 } = require('../models/taskModel');
 const { getProjectUsers } = require('../models/projectUserRoleModel');
 const { getProjectById } = require('../models/projectModel');
+//Implementación de notificaciones
+const { notifyTaskAssigned, notifyTaskStatusChanged } = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
 // Obtener tareas de un proyecto
@@ -78,6 +80,25 @@ const createTaskController = async (req, res, next) => {
         const result = await createTask(newTaskData);
         const newTask = await getTaskById(result.insertId);
 
+        // ✅ NUEVA FUNCIONALIDAD: Notificar tarea asignada
+        try {
+            if (usuarioAsignado && usuarioAsignado !== req.user.id) {
+                await notifyTaskAssigned(
+                    {
+                        id: newTask.id,
+                        nombre: newTask.nombre,
+                        id_proyecto: projectId,
+                        proyecto_nombre: project.nombre
+                    },
+                    usuarioAsignado,
+                    req.user.id
+                );
+            }
+        } catch (notificationError) {
+            console.error('Error al enviar notificación de tarea asignada:', notificationError);
+            // No fallar la creación de tarea por un error de notificación
+        }
+
         res.status(201).json({
             success: true,
             message: 'Tarea creada exitosamente',
@@ -99,6 +120,10 @@ const updateTaskController = async (req, res, next) => {
             return next(new AppError('Tarea no encontrada en este proyecto', 404));
         }
 
+        // Guardar estado anterior para detectar cambios
+        const oldStatus = task.estatus;
+        const oldAssignedUser = task.id_usuario_asignado;
+
         // Si se cambia usuarioAsignado, validar que pertenece al proyecto
         if (updates.usuarioAsignado) {
             const projectUsers = await getProjectUsers(projectId);
@@ -117,6 +142,44 @@ const updateTaskController = async (req, res, next) => {
             return next(new AppError('No se pudo actualizar la tarea', 400));
 
         const updatedTask = await getTaskById(taskId);
+
+        // ✅ NUEVA FUNCIONALIDAD: Notificaciones automáticas
+        try {
+            // Notificar cambio de estado si cambió
+            if (updates.estatus && updates.estatus !== oldStatus) {
+                const project = await getProjectById(projectId, req.user.id, req.user.rol);
+                await notifyTaskStatusChanged(
+                    {
+                        id: updatedTask.id,
+                        nombre: updatedTask.nombre,
+                        id_proyecto: projectId,
+                        id_usuario_asignado: updatedTask.id_usuario_asignado,
+                        id_creador: updatedTask.id_creador
+                    },
+                    oldStatus,
+                    updates.estatus,
+                    req.user.id
+                );
+            }
+
+            // Notificar nueva asignación si cambió el usuario asignado
+            if (updates.usuarioAsignado && updates.usuarioAsignado !== oldAssignedUser) {
+                const project = await getProjectById(projectId, req.user.id, req.user.rol);
+                await notifyTaskAssigned(
+                    {
+                        id: updatedTask.id,
+                        nombre: updatedTask.nombre,
+                        id_proyecto: projectId,
+                        proyecto_nombre: project.nombre
+                    },
+                    updates.usuarioAsignado,
+                    req.user.id
+                );
+            }
+        } catch (notificationError) {
+            console.error('Error al enviar notificaciones de tarea actualizada:', notificationError);
+            // No fallar la actualización por un error de notificación
+        }
 
         res.status(200).json({
             success: true,
@@ -157,11 +220,33 @@ const updateTaskStatusController = async (req, res, next) => {
         const task = await getTaskById(taskId);
         if (!task) return next(new AppError('Tarea no encontrada', 404));
 
+        const oldStatus = task.estatus;
+
         const result = await updateTaskStatus(taskId, estatus);
         if (result.affectedRows === 0)
             return next(new AppError('No se pudo actualizar el estatus de la tarea', 400));
 
         const updatedTask = await getTaskById(taskId);
+
+        // ✅ NUEVA FUNCIONALIDAD: Notificar cambio de estado (drag-and-drop)
+        try {
+            if (estatus !== oldStatus) {
+                await notifyTaskStatusChanged(
+                    {
+                        id: updatedTask.id,
+                        nombre: updatedTask.nombre,
+                        id_proyecto: updatedTask.id_proyecto,
+                        id_usuario_asignado: updatedTask.id_usuario_asignado,
+                        id_creador: updatedTask.id_creador
+                    },
+                    oldStatus,
+                    estatus,
+                    req.user.id
+                );
+            }
+        } catch (notificationError) {
+            console.error('Error al enviar notificación de cambio de estado:', notificationError);
+        }
 
         res.status(200).json({
             success: true,

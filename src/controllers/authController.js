@@ -15,6 +15,8 @@ const {
 } = require('../models/userModel');
 const { hashPassword } = require('../utils/passwordHash');
 const emailService = require('../services/emailService');
+//Implementación de Notificaciones
+const { notifyUserWelcome } = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
 const loginUser = async (req, res, next) => {
@@ -76,22 +78,22 @@ const generateVerificationCode = () => {
 const registerUser = async (req, res, next) => {
     try {
         const { nombre, apellido, email, password, telefono, id_rol, codigo } = req.body;
-        
+
         // Verificar código de verificación temporal
         const isValidCode = await verifyTemporaryCode(email, codigo);
         if (!isValidCode) {
             return next(new AppError('Código de verificación inválido o expirado', 400));
         }
-        
+
         // Verificar si el email ya existe (por seguridad)
         const emailExists = await checkEmailExists(email);
         if (emailExists) {
             return next(new AppError('El email ya está registrado', 409));
         }
-        
+
         // Hash de la contraseña
         const password_hash = await hashPassword(password);
-        
+
         // Crear usuario ACTIVO (ya verificado)
         const result = await createUser({
             nombre,
@@ -101,15 +103,28 @@ const registerUser = async (req, res, next) => {
             telefono,
             id_rol: id_rol || 3
         });
-        
+
         const userId = result.insertId;
-        
+
         // Activar usuario inmediatamente
         await updateUserStatus(userId, true);
-        
+
         // Limpiar código temporal
         await clearTemporaryVerificationCode(email);
-        
+
+        // ✅ NUEVA FUNCIONALIDAD: Enviar notificación de bienvenida
+        try {
+            await notifyUserWelcome({
+                id: userId,
+                nombre,
+                apellido,
+                email
+            });
+        } catch (notificationError) {
+            console.error('Error al enviar notificación de bienvenida:', notificationError);
+            // No fallar el registro por un error de notificación
+        }
+
         res.status(201).json({
             success: true,
             message: 'Usuario registrado exitosamente',
@@ -119,7 +134,7 @@ const registerUser = async (req, res, next) => {
                 nombre
             }
         });
-        
+
     } catch (error) {
         next(error);
     }

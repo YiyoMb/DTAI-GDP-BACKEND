@@ -14,6 +14,8 @@ const {
     isUserAssignedToProject
 } = require('../models/projectUserRoleModel');
 
+//Implementación de Notificaciones
+const { notifyUserAssignedToProject, notifyProjectCreated } = require('../services/notificationService');
 const { AppError } = require('../utils/errorHandler');
 
 const getAllProjects = async (req, res, next) => {
@@ -131,6 +133,17 @@ const createProjectController = async (req, res, next) => {
 
         const newProject = await getProjectById(result.insertId, req.user.id, req.user.rol);
 
+        // ✅ NUEVA FUNCIONALIDAD: Notificar proyecto creado
+        try {
+            // Si hay un programa asociado, notificar a usuarios que ya están en otros proyectos del programa
+            if (id_programa) {
+                // Esta lógica se puede expandir para obtener usuarios del programa
+                console.log(`Proyecto ${newProject.nombre} creado en programa ${id_programa}`);
+            }
+        } catch (notificationError) {
+            console.error('Error al enviar notificación de proyecto creado:', notificationError);
+        }
+
         res.status(201).json({
             success: true,
             message: 'Proyecto creado exitosamente',
@@ -231,6 +244,20 @@ const assignUserToProjectController = async (req, res, next) => {
         }
 
         await assignUserToProject(projectId, userId, roleId);
+
+        // ✅ NUEVA FUNCIONALIDAD: Notificar asignación a proyecto
+        try {
+            await notifyUserAssignedToProject(
+                {
+                    id: project.id,
+                    nombre: project.nombre
+                },
+                userId,
+                req.user.id
+            );
+        } catch (notificationError) {
+            console.error('Error al enviar notificación de asignación a proyecto:', notificationError);
+        }
 
         res.status(201).json({
             success: true,
