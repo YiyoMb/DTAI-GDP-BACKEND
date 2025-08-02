@@ -57,6 +57,7 @@ apiRoutes.use('/programs', require('./routes/programRoutes'));
 apiRoutes.use('/projects', require('./routes/projectRoutes'));
 apiRoutes.use('/tasks', require('./routes/taskRoutes'));
 apiRoutes.use('/dashboard', require('./routes/dashboardRoutes'));
+apiRoutes.use('/notifications', require('./routes/notificationRoutes'));
 // apiRoutes.use('/documents', require('./routes/documentRoutes'));
 // apiRoutes.use('/reports', require('./routes/reportRoutes'));
 // apiRoutes.use('/notifications', require('./routes/notificationRoutes'));
